@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"time"
@@ -33,10 +34,17 @@ func ParseExecutorAction(s string) (ExecutorAction, error) {
 }
 
 func main() {
+	var spec string
 	var actionStr string
 	var timeoutStr string
+	var dataStr string
 	var intervalStr string
 
+	// executor specific flags
+	flag.StringVar(&dataStr, "data", "", "Base64 encoded opaque data blob to be parsed by the executor")
+
+	// default flags
+	flag.StringVar(&spec, "spec", "", "Spec of the helmrelease object to apply")
 	flag.StringVar(&actionStr, "action", "", "Action to perform on the helmrelease object. Must be either install or delete")
 	flag.StringVar(&timeoutStr, "timeout", "5m", "Timeout for the execution of the argo workflow task")
 	flag.StringVar(&intervalStr, "interval", "10s", "Retry interval for the all actions by the executor")
@@ -59,6 +67,15 @@ func main() {
 		log.Fatalf("Failed to parse interval as a duration with %v", err)
 	}
 	log.Infof("Parsed the action: %v, the timeout: %v and the interval: %v", string(action), timeout.String(), interval.String())
+
+	if dataStr == "" {
+		log.Fatalf("Data string to the generic executor cannot be empty")
+	}
+
+	data, err := base64.StdEncoding.DecodeString(dataStr)
+	if err != nil {
+		log.Fatalf("Failed to decode the data string with %v", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 
@@ -84,11 +101,11 @@ func main() {
 	}
 
 	if action == Install {
-		if err := actions.Install(ctx, cancel, clientSet, interval); err != nil {
+		if err := actions.Install(ctx, cancel, clientSet, interval, string(data)); err != nil {
 			log.Fatalf("failed to install the helm release: %v", err)
 		}
 	} else if action == Delete {
-		if err := actions.Delete(ctx, cancel, clientSet, interval); err != nil {
+		if err := actions.Delete(ctx, cancel, clientSet, interval, string(data)); err != nil {
 			log.Fatalf("failed to delete the helm release: %v", err)
 		}
 	}
